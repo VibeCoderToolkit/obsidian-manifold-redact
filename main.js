@@ -19,6 +19,8 @@ const { Plugin, Notice } = require('obsidian');
 const OPEN = '<mark class="redacted">';
 const CLOSE = '</mark>';
 
+const count = (haystack, needle) => haystack.split(needle).length - 1;
+
 class ManifoldRedaction extends Plugin {
   onload() {
     /* Bindable from Settings, Hotkeys as "Manifold Redaction: Toggle redaction". */
@@ -58,27 +60,31 @@ class ManifoldRedaction extends Plugin {
 
     const doc = editor.getValue();
     const selected = doc.slice(from, to);
+    const balanced = count(selected, OPEN) === count(selected, CLOSE);
 
-    /* Already redacted, markers included: lift it. */
-    if (selected.startsWith(OPEN) && selected.endsWith(CLOSE)) {
-      this.replace(
-        editor,
-        doc.slice(from + OPEN.length, to - CLOSE.length),
-        from,
-        to
-      );
+    /* Already redacted, its own markers included: lift it. Only when the
+       selection holds exactly one pair, or slicing would unbalance the rest. */
+    if (
+      balanced &&
+      count(selected, OPEN) === 1 &&
+      selected.startsWith(OPEN) &&
+      selected.endsWith(CLOSE)
+    ) {
+      this.replace(editor, selected.slice(OPEN.length, selected.length - CLOSE.length), from, to);
       return;
     }
 
-    /* Selected from inside a redaction: lift that whole one. */
+    /* Selected from inside exactly one redaction: lift that whole one. */
     const span = this.enclosingSpan(doc, from, to);
     if (span) {
-      this.replace(
-        editor,
-        doc.slice(span[0] + OPEN.length, span[1]),
-        span[0],
-        span[1] + CLOSE.length
-      );
+      this.replace(editor, doc.slice(span[0] + OPEN.length, span[1]), span[0], span[1] + CLOSE.length);
+      return;
+    }
+
+    /* The selection touches redaction markup but is not one clean pair, so
+       wrapping or cutting here would corrupt the note. Refuse and say so. */
+    if (count(selected, OPEN) || count(selected, CLOSE)) {
+      new Notice('That selection spans more than one redaction. Select a single passage.');
       return;
     }
 
@@ -91,8 +97,8 @@ class ManifoldRedaction extends Plugin {
   }
 
   /**
-   * The redaction surrounding this selection, as [openStart, closeStart], or
-   * null when the selection is not enclosed by exactly one pair of markers.
+   * The one redaction surrounding this selection, as [openStart, closeStart],
+   * or null when the selection is not enclosed by exactly one pair of markers.
    */
   enclosingSpan(doc, from, to) {
     const open = doc.lastIndexOf(OPEN, from);
@@ -101,10 +107,9 @@ class ManifoldRedaction extends Plugin {
     const close = doc.indexOf(CLOSE, to);
     if (close === -1) return null;
 
-    /* Reject a pair that straddles another redaction, which would mean the
-       selection crosses a boundary. */
-    if (doc.slice(open + OPEN.length, from).indexOf(CLOSE) !== -1) return null;
-    if (doc.slice(to, close).indexOf(OPEN) !== -1) return null;
+    /* The whole region between those two markers must hold one clean pair. */
+    const region = doc.slice(open, close + CLOSE.length);
+    if (count(region, OPEN) !== 1 || count(region, CLOSE) !== 1) return null;
 
     return [open, close];
   }

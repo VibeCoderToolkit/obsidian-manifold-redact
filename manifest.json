@@ -1,7 +1,7 @@
 {
   "id": "manifold-redact",
   "name": "Manifold Redaction",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "minAppVersion": "1.4.0",
   "description": "Marks a selected passage as redacted. The Manifold theme draws it as a bar with the words knocked out. Run it again to lift the bar.",
   "author": "Harald Daltveit",
